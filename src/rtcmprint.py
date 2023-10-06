@@ -328,6 +328,55 @@ def standardBoolean(message,id):
     return("   " + str(base_id) + ": " + datadesc(base_id) + ": " + str(value))
 
 
+def output_1005(message,outfile,obsSummary=None):
+
+    def standard141(message,id=141):
+        base_id=f"DF{id:03}"
+        try:
+            if getattr(message, base_id) == 0 :
+                value="Physical Base"
+            elif getattr(message, base_id) == 1 :
+                value="Non Physical Base"
+            else:
+                value="Unknown"
+        except:
+            value="N/A"
+        return("   " + str(base_id) + ": " + datadesc(base_id) + ": " + str(value))
+
+    def standard142(message,id=142):
+        base_id=f"DF{id:03}"
+        try:
+            if getattr(message, base_id) == 0 :
+                value="Measurements At different intervals"
+            elif getattr(message, base_id) == 1 :
+                value="Measurements at same interval"
+            else:
+                value="Unknown"
+        except:
+            value="N/A"
+        return("   " + str(base_id) + ": " + datadesc(base_id) + ": " + str(value))
+
+
+
+    if message.identity != "1005":
+        return(False)
+
+
+#    print(message.identity  + ": " + RTCM_MSGIDS[message.identity],file=outfile)
+    print(standardNumber(message,3),file=outfile)
+
+    print(standardNumber(message,21),file=outfile)
+    print(standardBoolean(message,22),file=outfile)
+    print(standardBoolean(message,23),file=outfile)
+    print(standardBoolean(message,24),file=outfile)
+    print(standardNumber(message,25),file=outfile)
+    print(standardNumber(message,26),file=outfile)
+    print(standardNumber(message,27),file=outfile)
+    print(standard141(message),file=outfile)
+    print(standard142(message),file=outfile)
+    print(standardNumber(message,364),file=outfile)
+    return(True)
+
 def output_1006(message,outfile,obsSummary=None):
 
     def standard141(message,id=141):
@@ -372,10 +421,10 @@ def output_1006(message,outfile,obsSummary=None):
     print(standardNumber(message,25),file=outfile)
     print(standardNumber(message,26),file=outfile)
     print(standardNumber(message,27),file=outfile)
-    print(standardNumber(message,28),file=outfile)
     print(standard141(message),file=outfile)
     print(standard142(message),file=outfile)
     print(standardNumber(message,364),file=outfile)
+    print(standardNumber(message,28),file=outfile)
     return(True)
 
 def output_1008(message,outfile,obsSummary=None):
@@ -948,6 +997,7 @@ def output_1230(message,outfile,obsSummary=None):
 
 
 OUTPUT_FUNCTIONS={
+    1005: output_1005,
     1006: output_1006,
     1008: output_1008,
     1013: output_1013,
