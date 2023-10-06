@@ -177,7 +177,7 @@ def get_args():
         epilog="Version: {} pyrtcm: {}".format(VERSION,pyrtcmVersion)
         )
 
-    parser.add_argument("RTCMFile", type=argparse.FileType('rb'), \
+    parser.add_argument("--RTCMFile", type=argparse.FileType('rb'),default=sys.stdin.buffer, \
         help="RTCM File to display info on",)
 
 
