@@ -17,25 +17,17 @@ Created on 11 Feb 2023
 
 
 
-#from pprint import pprint
-import os
 import sys
 import argparse
 from collections import defaultdict
 
-# Define the path to the directory containing pyrtcm
-pyrtcm_path = '/Users/gkirk/Documents/GitHub/pyrtcm-org/src/'
-
-# Add the path to sys.path
-sys.path.insert(0, pyrtcm_path)
-
 from pyrtcm import RTCMReader, __version__ as pyrtcmVersion
 
-from pyrtcm.rtcmtypes_core import RTCM_MSGIDS
+from pyrtcm.rtcmtypes_core import GNSSMAP, RTCM_MSGIDS
 
 from pyrtcm.rtcmhelpers import tow2utc
 
-from rtcmextrahelpers import glonass2tow, glonasstow2utc, beidoutow2utc
+from rtcmextrahelpers import glonasstow2utc, beidoutow2utc
 
 from pprint import pprint
 
@@ -64,6 +56,21 @@ def errhandler(err):
     print(f"\nERROR: {err}")
 
 
+def msm_epoch_tow(parsed_data):
+    """
+    Return the MSM epoch time as time-of-week milliseconds.
+    """
+
+    msg_prefix = parsed_data.identity[0:3]
+    if msg_prefix == "108":  # GLONASS stores day-of-week and time-of-day separately.
+        dow = getattr(parsed_data, "DF416")
+        sod = getattr(parsed_data, "DF034")
+        return sod if dow == 7 else dow * 86400000 + sod
+
+    _, epoch_attr = GNSSMAP[msg_prefix]
+    return getattr(parsed_data, epoch_attr)
+
+
 def read(stream, errorhandler, quitonerror, validate,
     metadata_only,\
     obs_summary=False,\
@@ -79,11 +86,10 @@ def read(stream, errorhandler, quitonerror, validate,
     message_counts=defaultdict(int)
 
     ubr = RTCMReader(
-        stream, errorhandler=errorhandler, quitonerror=quitonerror, validate=validate, scaling=True
+        stream, errorhandler=errorhandler, quitonerror=quitonerror, validate=validate
     )
 
-    for (raw_data, parsed_data) in ubr.iterate(
-        errorhandler=errorhandler, quitonerror=quitonerror):
+    for (raw_data, parsed_data) in ubr:
         msg_count += 1
 
         if debug:
@@ -121,28 +127,22 @@ def read(stream, errorhandler, quitonerror, validate,
         if parsed_data.identity in RTCM_MSGIDS:
             print (f"ID: {msg_id} ({RTCM_MSGIDS[parsed_data.identity]})" )
         else:
-            print ("ID: {} (Unknown)" , msg_id)
+            print (f"ID: {msg_id} (Unknown)")
 
 
 #        print (parsed_data)
 
         try:
-            if 1081 <=  msg_id <= 1087 :
-                print ("   Epoch Time: {:0.3f}".format(\
-                    glonass2tow(parsed_data.GNSSEpoch)/1000))
-                print ("   UTC   Time: {}".format(\
-                    glonasstow2utc(glonass2tow(parsed_data.GNSSEpoch)).strftime("%H:%M:%S")))
-            elif 1121 <=  msg_id <= 1127 :
-                print ("   Epoch Time: {:0.3f}".format(\
-                    parsed_data.GNSSEpoch/1000))
-                print ("   UTC   Time: {}".format(\
-                    beidoutow2utc(parsed_data.GNSSEpoch).strftime("%H:%M:%S")))
+            epoch_tow = msm_epoch_tow(parsed_data)
+            print ("   Epoch Time: {:0.3f}".format(epoch_tow / 1000))
+            if 1081 <= msg_id <= 1087:
+                utc_time = glonasstow2utc(epoch_tow)
+            elif 1121 <= msg_id <= 1127:
+                utc_time = beidoutow2utc(epoch_tow)
             else:
-                print ("   Epoch Time: {:0.3f}".format(\
-                    parsed_data.GNSSEpoch/1000))
-                print ("   UTC   Time: {}".format(\
-                    tow2utc(parsed_data.GNSSEpoch).strftime("%H:%M:%S")))
-        except:
+                utc_time = tow2utc(epoch_tow)
+            print ("   UTC   Time: {}".format(utc_time.strftime("%H:%M:%S")))
+        except (AttributeError, KeyError):
             pass
 
         print_record(parsed_data,sys.stdout,obs_summary)
@@ -162,7 +162,7 @@ def read(stream, errorhandler, quitonerror, validate,
         else:
             if str(msg_id) in RTCM_MSGIDS:
                 print ("{:<4} : {:>6} : **Undecoded** {}" .format (\
-                    msg_id,message_counts[id], RTCM_MSGIDS[str(msg_id)]))
+                    msg_id,message_counts[msg_id], RTCM_MSGIDS[str(msg_id)]))
             else:
                 print ("{:<4} : {:>6} : **Undecoded** Unknown" .format(\
                     msg_id, message_counts[msg_id]))

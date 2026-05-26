@@ -1,20 +1,58 @@
 #! /usr/bin/env python3
-import os
-import sys
-
-# Define the path to the directory containing pyrtcm
-pyrtcm_path = '/Users/gkirk/Documents/GitHub/pyrtcm-org/src/'
-
-# Add the path to sys.path
-sys.path.insert(0, pyrtcm_path)
-
 from pprint import pprint
 
 from pyrtcm import RTCM_DATA_FIELDS, RTCM_MSGIDS
-from pyrtcm.rtcmtables import GPS_SIG_MAP , GLONASS_SIG_MAP, QZSS_SIG_MAP, GALILEO_SIG_MAP, BEIDOU_SIG_MAP
-from pyrtcm.rtcmhelpers import datasiz, datascale, datadesc,sat2prn, cell2prn, id2prnsigmap
+from pyrtcm.rtcmtables import PRNSIGMAP, GPS_SIG_MAP , GLONASS_SIG_MAP, QZSS_SIG_MAP, GALILEO_SIG_MAP, BEIDOU_SIG_MAP
 
-from pyrtcm.rtcmreader import RTCMReader
+
+def datafield_key(datafield):
+    return datafield if datafield in RTCM_DATA_FIELDS else datafield[0:5]
+
+
+def datasiz(datafield):
+    return RTCM_DATA_FIELDS[datafield_key(datafield)][1]
+
+
+def datascale(datafield):
+    return RTCM_DATA_FIELDS[datafield_key(datafield)][2]
+
+
+def datadesc(datafield):
+    return RTCM_DATA_FIELDS[datafield_key(datafield)][-1]
+
+
+def sat2prn(message):
+    return {
+        index: getattr(message, f"PRN_{index:02}")
+        for index in range(1, message.NSat + 1)
+    }
+
+
+def cell2prn(message):
+    return {
+        index: (
+            getattr(message, f"CELLPRN_{index:02}"),
+            getattr(message, f"CELLSIG_{index:02}"),
+        )
+        for index in range(1, message.NCell + 1)
+    }
+
+
+def id2prnsigmap(ident):
+    return PRNSIGMAP[str(ident)[0:3]]
+
+
+def format_signal(message_id, signal):
+    signal_name = MSM_SIGNAL_NAMES.get(message_id, {}).get(signal, "Reserved")
+    signal_map = MSM_SIGNAL_MAPS.get(message_id, {})
+    signal_code = signal_map.get(signal, "Reserved")
+    if isinstance(signal_code, tuple):
+        signal_code = signal_code[1]
+    return "{:}-({:})".format(signal_name, signal_code)
+
+
+def has_repeating_attr(message, base_id):
+    return hasattr(message, f"{base_id}_01")
 
 
 GPS_SIG_NAME = {
@@ -220,13 +258,13 @@ MSM_SIGNAL_NAMES={
     1096:GALILEO_SIG_NAME,
     1097:GALILEO_SIG_NAME,
 
-    1111:BEIDOU_SIG_NAME,
-    1112:BEIDOU_SIG_NAME,
-    1113:BEIDOU_SIG_NAME,
-    1114:BEIDOU_SIG_NAME,
-    1115:BEIDOU_SIG_NAME,
-    1116:BEIDOU_SIG_NAME,
-    1117:BEIDOU_SIG_NAME,
+    1111:QZSS_SIG_NAME,
+    1112:QZSS_SIG_NAME,
+    1113:QZSS_SIG_NAME,
+    1114:QZSS_SIG_NAME,
+    1115:QZSS_SIG_NAME,
+    1116:QZSS_SIG_NAME,
+    1117:QZSS_SIG_NAME,
 
     1121:BEIDOU_SIG_NAME,
     1122:BEIDOU_SIG_NAME,
@@ -551,7 +589,7 @@ def output_MSM(message,outfile,obsSummary=False):
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
             if (Signals & Signal_Bit) != 0:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[messageId][Signal],MSM_SIGNAL_MAPS[messageId][Signal])
+                SigName=format_signal(messageId, Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -605,7 +643,7 @@ def output_MSM(message,outfile,obsSummary=False):
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
             if (Signals & Signal_Bit) != 0:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[messageId][Signal],MSM_SIGNAL_MAPS[messageId][Signal])
+                SigName=format_signal(messageId, Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -660,7 +698,7 @@ def output_MSM(message,outfile,obsSummary=False):
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
             if (Signals & Signal_Bit) != 0:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[messageId][Signal],MSM_SIGNAL_MAPS[messageId][Signal])
+                SigName=format_signal(messageId, Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -714,8 +752,8 @@ def output_MSM(message,outfile,obsSummary=False):
 
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
-            if Signal_Bit & Signal:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[messageId][Signal],MSM_SIGNAL_MAPS[messageId][Signal])
+            if (Signals & Signal_Bit) != 0:
+                SigName=format_signal(messageId, Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -757,7 +795,7 @@ def output_MSM(message,outfile,obsSummary=False):
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
             if (Signals & Signal_Bit) != 0:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[messageId][Signal],MSM_SIGNAL_MAPS[messageId][Signal])
+                SigName=format_signal(messageId, Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -872,7 +910,7 @@ def output_MSM(message,outfile,obsSummary=False):
         for Signal in range(1,33):
             Signal_Bit=1 << (32-Signal)
             if (Signals & Signal_Bit) != 0:
-                SigName="{:}-({:})".format(MSM_SIGNAL_NAMES[int(message.identity)][Signal],MSM_SIGNAL_MAPS[int(message.identity)][Signal])
+                SigName=format_signal(int(message.identity), Signal)
                 Header+="{:<16} ".format(SigName)
         print(Header,file=outfile)
 
@@ -914,36 +952,25 @@ def output_MSM(message,outfile,obsSummary=False):
     else:
         MSMRough(message.NSat,message,outfile)
 
-        if "groupsig1" in message._get_dict() :
-
-            if 'DF400' in message._get_dict()["groupsig1"][1] :
-                MSMSv(message.NSat,message.NSig, message,int(message.identity),400,outfile,-2**10)
-            if 'DF405' in message._get_dict()["groupsig1"][1] :
-                MSMSv(message.NSat,message.NSig, message,int(message.identity),405,outfile,-2**10)
-
-        if "groupsig2" in message._get_dict() :
-            if 'DF401' in message._get_dict()["groupsig2"][1] :
-                MSMSv(message.NSat,message.NSig, message,int(message.identity),401,outfile,0.0)
-            if 'DF406' in message._get_dict()["groupsig2"][1] :
-                MSMSv(message.NSat,message.NSig, message,int(message.identity),406,outfile,0.0)
-
-        if "groupsig3" in message._get_dict() :
-            if 'DF402' in message._get_dict()["groupsig3"][1] :
-                MSMSvLock(message.NSat,message.NSig,message,int(message.identity),402,outfile)
-            if 'DF407' in message._get_dict()["groupsig3"][1] :
-                MSM7SvLock(message.NSat,message.NSig,message,int(message.identity),407,outfile)
-
-        if "groupsig4" in message._get_dict() :
-            if 'DF420' in message._get_dict()["groupsig4"][1] :
-                MSMSvHalfCycle(message.NSat,message.NSig,message,int(message.identity),420,outfile)
-
-        if "groupsig5" in message._get_dict() :
-            if 'DF403' in message._get_dict()["groupsig5"][1] :
-                MSMCNRs(message.NSat,message.NSig,message,int(message.identity),403,outfile)
-            if 'DF408' in message._get_dict()["groupsig5"][1] :
-                MSMCNRs(message.NSat,message.NSig,message,int(message.identity),408,outfile)
-
-        if "groupsig6" in message._get_dict() :
+        if has_repeating_attr(message, "DF400"):
+            MSMSv(message.NSat,message.NSig, message,int(message.identity),400,outfile,-2**10)
+        if has_repeating_attr(message, "DF405"):
+            MSMSv(message.NSat,message.NSig, message,int(message.identity),405,outfile,-2**10)
+        if has_repeating_attr(message, "DF401"):
+            MSMSv(message.NSat,message.NSig, message,int(message.identity),401,outfile,0.0)
+        if has_repeating_attr(message, "DF406"):
+            MSMSv(message.NSat,message.NSig, message,int(message.identity),406,outfile,0.0)
+        if has_repeating_attr(message, "DF402"):
+            MSMSvLock(message.NSat,message.NSig,message,int(message.identity),402,outfile)
+        if has_repeating_attr(message, "DF407"):
+            MSM7SvLock(message.NSat,message.NSig,message,int(message.identity),407,outfile)
+        if has_repeating_attr(message, "DF420"):
+            MSMSvHalfCycle(message.NSat,message.NSig,message,int(message.identity),420,outfile)
+        if has_repeating_attr(message, "DF403"):
+            MSMCNRs(message.NSat,message.NSig,message,int(message.identity),403,outfile)
+        if has_repeating_attr(message, "DF408"):
+            MSMCNRs(message.NSat,message.NSig,message,int(message.identity),408,outfile)
+        if has_repeating_attr(message, "DF404"):
             MSMSv(message.NSat,message.NSig,message,int(message.identity),404,outfile,-1.6384)
 
 
@@ -963,29 +990,21 @@ def output_1230(message,outfile,obsSummary=None):
             value="N/A"
         return("   " + str(base_id) + ": " + datadesc(base_id) + ": " + str(value))
 
-    def standard422andSubs(message,outfile,id=422):
+    def standard422andSubs(message,outfile):
 
-        base_id=f"DF{id:03}"
-        mask=getattr(message, base_id)
+        for mask_id, bias_id in (
+            ("DF422_1", 423),
+            ("DF422_2", 424),
+            ("DF422_3", 425),
+            ("DF422_4", 426),
+        ):
+            mask = getattr(message, mask_id, None)
+            if mask is None:
+                continue
 
-        try:
-            value="{:0X} ({:b})".format(mask, mask)
-        except:
-            value="N/A"
-
-        print("   " + str(base_id) + ": " + datadesc(base_id) + ": " + str(value),file=outfile)
-
-        if mask and 1<<3 :
-            print(standardNumber(message,423),file=outfile)
-
-        if mask and 1<<2 :
-            print(standardNumber(message,424),file=outfile)
-
-        if mask and 1<<1 :
-            print(standardNumber(message,425),file=outfile)
-
-        if mask and 1  :
-            print(standardNumber(message,426),file=outfile)
+            print("   " + mask_id + ": " + datadesc(mask_id) + ": " + str(mask),file=outfile)
+            if mask:
+                print(standardNumber(message,bias_id),file=outfile)
 
 
     if message.identity != "1230":
