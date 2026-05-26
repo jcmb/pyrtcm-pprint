@@ -1,10 +1,19 @@
 #! /usr/bin/env python3
-
+import os
 import sys
+
+# Define the path to the directory containing pyrtcm
+pyrtcm_path = '/Users/gkirk/Documents/GitHub/pyrtcm-org/src/'
+
+# Add the path to sys.path
+sys.path.insert(0, pyrtcm_path)
 
 from pprint import pprint
 
-from pyrtcm import RTCM_DATA_FIELDS, RTCM_MSGIDS , GPS_SIG_MAP , GLONASS_SIG_MAP, QZSS_SIG_MAP, GALILEO_SIG_MAP, BEIDOU_SIG_MAP, datasiz, datascale, datadesc,sat2prn, cell2prn, id2prnsigmap
+from pyrtcm import RTCM_DATA_FIELDS, RTCM_MSGIDS
+from pyrtcm.rtcmtables import GPS_SIG_MAP , GLONASS_SIG_MAP, QZSS_SIG_MAP, GALILEO_SIG_MAP, BEIDOU_SIG_MAP
+from pyrtcm.rtcmhelpers import datasiz, datascale, datadesc,sat2prn, cell2prn, id2prnsigmap
+
 from pyrtcm.rtcmreader import RTCMReader
 
 
