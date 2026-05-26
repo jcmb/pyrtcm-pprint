@@ -18,10 +18,16 @@ Created on 11 Feb 2023
 
 
 #from pprint import pprint
-#import os
+import os
 import sys
 import argparse
 from collections import defaultdict
+
+# Define the path to the directory containing pyrtcm
+pyrtcm_path = '/Users/gkirk/Documents/GitHub/pyrtcm-org/src/'
+
+# Add the path to sys.path
+sys.path.insert(0, pyrtcm_path)
 
 from pyrtcm import RTCMReader, __version__ as pyrtcmVersion
 
@@ -31,8 +37,7 @@ from pyrtcm.rtcmhelpers import tow2utc
 
 from rtcmextrahelpers import glonass2tow, glonasstow2utc, beidoutow2utc
 
-
-
+from pprint import pprint
 
 
 from rtcmprint import print_record , OUTPUT_FUNCTIONS
@@ -56,7 +61,7 @@ def errhandler(err):
     Handles errors output by iterator.
     """
 
-    print(f"\nERROR: {err}\n")
+    print(f"\nERROR: {err}")
 
 
 def read(stream, errorhandler, quitonerror, validate,
@@ -76,9 +81,9 @@ def read(stream, errorhandler, quitonerror, validate,
     ubr = RTCMReader(
         stream, errorhandler=errorhandler, quitonerror=quitonerror, validate=validate, scaling=True
     )
-    for (_, parsed_data) in ubr.iterate(
-        errorhandler=errorhandler, quitonerror=quitonerror
-    ):
+
+    for (raw_data, parsed_data) in ubr.iterate(
+        errorhandler=errorhandler, quitonerror=quitonerror):
         msg_count += 1
 
         if debug:
@@ -86,6 +91,12 @@ def read(stream, errorhandler, quitonerror, validate,
             print (parsed_data)
 #            pprint (parsed_data._get_dict())
 
+#        pprint(parsed_data)
+#        pprint(raw_data)
+        if raw_data == None :
+#            if quitonerror!=1:
+#                print(parsed_data)
+            continue
 
         msg_id = int(parsed_data.identity)
 
