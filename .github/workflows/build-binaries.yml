@@ -46,11 +46,11 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller pyrtcm==1.1.12
+          python -m pip install pyinstaller pyrtcm==1.1.12 textual
 
       - name: Build executable
         run: |
-          pyinstaller --clean --onefile --name rtcm-pprint --paths src src/rtcm-pprint.py
+          pyinstaller --clean --onefile --name rtcm-pprint --paths src --hidden-import rtcmtui --collect-all textual src/rtcm-pprint.py
 
       - name: Prepare artifact
         env:

@@ -206,6 +206,8 @@ def get_args():
         help="Display only first record of each type")
     parser.add_argument("--debug", action="store_true", \
         help="Display low level information.")
+    parser.add_argument("--tui", action="store_true", \
+        help="Display an interactive terminal dashboard instead of streaming decoded output.")
     parser = parser.parse_args()
     return vars(parser)
 
@@ -220,17 +222,31 @@ def main():
 #    pprint(args)
 
     print("\nProcessing file {}...\n".format(args["RTCMFile"].name),file=sys.stderr)
-    read(args["RTCMFile"],
-        errhandler,\
-        args["quitonerror"],\
-        args["validate"],\
-        args["metadataOnly"],\
-        args["obsSummary"],\
-        args["summaryOnly"],\
-        args["debug"],\
-        args["singleRecord"],\
+    if args["tui"]:
+        from rtcmtui import run_tui
 
+        run_tui(
+            args["RTCMFile"],
+            quitonerror=args["quitonerror"],
+            validate=args["validate"],
+            metadata_only=args["metadataOnly"],
+            obs_summary=args["obsSummary"],
+            summary_only=args["summaryOnly"],
+            debug=args["debug"],
+            single_record=args["singleRecord"],
         )
+    else:
+        read(args["RTCMFile"],
+            errhandler,\
+            args["quitonerror"],\
+            args["validate"],\
+            args["metadataOnly"],\
+            args["obsSummary"],\
+            args["summaryOnly"],\
+            args["debug"],\
+            args["singleRecord"],\
+
+            )
 
 
 
