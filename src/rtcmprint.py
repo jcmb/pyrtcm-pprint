@@ -531,7 +531,7 @@ def output_1013(message,outfile,obsSummary=None):
     print(standardNumber(message,51),file=outfile)
     print(standardNumber(message,52),file=outfile)
     print(standardNumber(message,54),file=outfile)
-    print(messageIDs(message))
+    print(messageIDs(message),file=outfile)
 
     return(True)
 

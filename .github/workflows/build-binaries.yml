@@ -46,11 +46,11 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller pyrtcm==1.1.12
+          python -m pip install pyinstaller pyrtcm==1.1.12 textual
 
       - name: Build executable
         run: |
-          pyinstaller --clean --onefile --name rtcm-pprint --paths src src/rtcm-pprint.py
+          pyinstaller --clean --onefile --name rtcm-pprint --paths src --hidden-import rtcmtui --collect-all textual src/rtcm-pprint.py
 
       - name: Prepare artifact
         env:
@@ -59,6 +59,7 @@ jobs:
           python - <<'PY'
           import os
           import shutil
+          import textwrap
           from pathlib import Path
 
           target = os.environ["BUILD_TARGET"]
@@ -69,8 +70,24 @@ jobs:
 
           package_dir = Path("package")
           package_dir.mkdir(exist_ok=True)
-          suffix = executable.suffix
-          shutil.copy2(executable, package_dir / f"rtcm-pprint-{target}{suffix}")
+          shutil.copy2(executable, package_dir / exe_name)
+
+          if target == "macos-arm64":
+              script = package_dir / "clear-quarantine.sh"
+              script.write_text(
+                  textwrap.dedent("""\
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          target="${1:-${script_dir}/rtcm-pprint}"
+
+          xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
+          echo "Cleared quarantine attributes from $target"
+          """),
+                  encoding="utf-8",
+              )
+              script.chmod(0o755)
           PY
 
       - name: Upload artifact
