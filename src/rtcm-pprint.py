@@ -19,13 +19,28 @@ Created on 11 Feb 2023
 
 import sys
 import argparse
+import os
 from collections import defaultdict
 
-from pyrtcm import RTCMReader, __version__ as pyrtcmVersion
+try:
+    from pyrtcm import RTCMReader, __version__ as pyrtcmVersion
+    from pyrtcm.rtcmhelpers import tow2utc
+    from pyrtcm.rtcmtypes_core import GNSSMAP, RTCM_MSGIDS
+except ModuleNotFoundError as err:
+    if err.name != "pyrtcm":
+        raise
+    print(
+        "Missing dependency: pyrtcm\n\n"
+        "Install it into the same Python environment you use to run rtcm-pprint:\n"
+        "  python -m pip install pyrtcm==1.1.12\n\n"
+        "If you use a virtual environment, activate it first:\n"
+        "  python3 -m venv .venv\n"
+        "  source .venv/bin/activate\n"
+        "  python -m pip install pyrtcm==1.1.12\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
-from pyrtcm.rtcmtypes_core import GNSSMAP, RTCM_MSGIDS
-
-from pyrtcm.rtcmhelpers import tow2utc
 
 from rtcmextrahelpers import glonasstow2utc, beidoutow2utc
 
@@ -168,7 +183,7 @@ def read(stream, errorhandler, quitonerror, validate,
                     msg_id, message_counts[msg_id]))
     print(f"\n{msg_count} messages read. {print_msg_count} printed\n")
 
-VERSION=0.1
+VERSION=1.1
 
 
 def get_args():
@@ -212,6 +227,48 @@ def get_args():
     return vars(parser)
 
 
+def is_stdin_stream(stream):
+    """
+    Return True when the RTCM input stream is stdin.
+    """
+
+    return stream is sys.stdin.buffer or getattr(stream, "name", None) == "<stdin>"
+
+
+def prepare_tui_terminal_input(rtcm_stream):
+    """
+    Give Textual a terminal stdin while preserving binary RTCM stdin.
+    """
+
+    if not is_stdin_stream(rtcm_stream) or sys.stdin.isatty():
+        return None
+
+    terminal_name = "CONIN$" if os.name == "nt" else "/dev/tty"
+    try:
+        terminal = open(
+            terminal_name,
+            "r",
+            encoding=sys.stdin.encoding or "utf-8",
+            errors="replace",
+        )
+    except OSError as err:
+        print(
+            "The --tui dashboard can read RTCM data from stdin, but it also needs "
+            "a terminal for keyboard input.\n\n"
+            f"Could not open {terminal_name}: {err}\n\n"
+            "Run --tui from an interactive terminal, or use --RTCMFile with a file. "
+            "For plain piped output without a dashboard, run without --tui.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    original_stdin = sys.stdin
+    original_dunder_stdin = sys.__stdin__
+    sys.stdin = terminal
+    sys.__stdin__ = terminal
+    return terminal, original_stdin, original_dunder_stdin
+
+
 def main():
 
     """
@@ -221,21 +278,30 @@ def main():
     args=get_args()
 #    pprint(args)
 
-    print("\nProcessing file {}...\n".format(args["RTCMFile"].name),file=sys.stderr)
     if args["tui"]:
+        tui_input = prepare_tui_terminal_input(args["RTCMFile"])
+        print("\nProcessing file {}...\n".format(args["RTCMFile"].name),file=sys.stderr)
         from rtcmtui import run_tui
 
-        run_tui(
-            args["RTCMFile"],
-            quitonerror=args["quitonerror"],
-            validate=args["validate"],
-            metadata_only=args["metadataOnly"],
-            obs_summary=args["obsSummary"],
-            summary_only=args["summaryOnly"],
-            debug=args["debug"],
-            single_record=args["singleRecord"],
-        )
+        try:
+            run_tui(
+                args["RTCMFile"],
+                quitonerror=args["quitonerror"],
+                validate=args["validate"],
+                metadata_only=args["metadataOnly"],
+                obs_summary=args["obsSummary"],
+                summary_only=args["summaryOnly"],
+                debug=args["debug"],
+                single_record=args["singleRecord"],
+            )
+        finally:
+            if tui_input is not None:
+                terminal, original_stdin, original_dunder_stdin = tui_input
+                sys.stdin = original_stdin
+                sys.__stdin__ = original_dunder_stdin
+                terminal.close()
     else:
+        print("\nProcessing file {}...\n".format(args["RTCMFile"].name),file=sys.stderr)
         read(args["RTCMFile"],
             errhandler,\
             args["quitonerror"],\
