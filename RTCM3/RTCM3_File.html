@@ -1,0 +1,84 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+<title>RTCM V3 Decoding for a file</title>
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="http://construction.trimble.com/">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+  <!-- end #logo-area -->
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content" class="clearfix">
+<form target="_blank" action="/cgi-bin/rtcm-pprint.cgi" method="post" enctype="multipart/form-data">
+<table border="1" width="100%">
+<caption>RTCM V3 File</caption>
+<col width="25%">
+<col width="75%">
+<tr>
+<td>
+RTCM3 File:
+</td>
+<td>
+<input type="file" name="file" size="80" />
+</td>
+</tr>
+
+</table>
+
+<br/>
+
+<table border="1" width="100%">
+<caption>Processing options</caption>
+<col width="25%">
+<col width="75%">
+
+<tr>
+  <td>
+    <input type="checkbox" id="metadataOnly" name="metadataOnly" value="on" />
+    <label for="metadataOnly">Metadata only</label>
+  </td>
+  <td>Display only metadata records (exclude MSM and legacy observation messages).</td>
+</tr>
+
+<tr>
+  <td>
+    <input type="checkbox" id="obsSummary" name="obsSummary" value="on" />
+    <label for="obsSummary">Observation summary</label>
+  </td>
+  <td>Display only observation summary fields where available.</td>
+</tr>
+
+<tr>
+  <td>
+    <input type="checkbox" id="summaryOnly" name="summaryOnly" value="on" />
+    <label for="summaryOnly">Summary only</label>
+  </td>
+  <td>Display only the message type count summary, not full decode output.</td>
+</tr>
+
+<tr>
+  <td>
+    <input type="checkbox" id="singleRecord" name="singleRecord" value="on" />
+    <label for="singleRecord">Single record</label>
+  </td>
+  <td>Display only the first record of each message type.</td>
+</tr>
+
+</table>
+<p>Full decode and Observation summary is downloaded as a ZIP file.</p>
+<p/>
+
+<input type="submit" value="Submit" />
+</form>
+</div>
+</div>
+</div>
+
+</body>
+</html>

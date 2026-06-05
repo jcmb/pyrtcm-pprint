@@ -41,7 +41,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install build dependencies
         run: |
@@ -50,7 +50,7 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --clean --onefile --name rtcm-pprint --paths src --hidden-import rtcmtui --collect-all textual src/rtcm-pprint.py
+          pyinstaller --clean --onedir --name rtcm-pprint --paths src --hidden-import rtcmtui --collect-all textual src/rtcm-pprint.py
 
       - name: Prepare artifact
         env:
@@ -64,13 +64,16 @@ jobs:
 
           target = os.environ["BUILD_TARGET"]
           exe_name = "rtcm-pprint.exe" if os.name == "nt" else "rtcm-pprint"
-          executable = Path("dist") / exe_name
+          bundle_dir = Path("dist") / "rtcm-pprint"
+          executable = bundle_dir / exe_name
           if not executable.exists():
               raise FileNotFoundError(f"Expected executable not found: {executable}")
 
           package_dir = Path("package")
+          if package_dir.exists():
+              shutil.rmtree(package_dir)
           package_dir.mkdir(exist_ok=True)
-          shutil.copy2(executable, package_dir / exe_name)
+          shutil.copytree(bundle_dir, package_dir / "rtcm-pprint")
 
           if target == "macos-arm64":
               script = package_dir / "clear-quarantine.sh"
@@ -80,7 +83,7 @@ jobs:
           set -euo pipefail
 
           script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          target="${1:-${script_dir}/rtcm-pprint}"
+          target="${1:-${script_dir}/rtcm-pprint/rtcm-pprint}"
 
           xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
           echo "Cleared quarantine attributes from $target"
