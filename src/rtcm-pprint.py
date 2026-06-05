@@ -183,7 +183,7 @@ def read(stream, errorhandler, quitonerror, validate,
                     msg_id, message_counts[msg_id]))
     print(f"\n{msg_count} messages read. {print_msg_count} printed\n")
 
-VERSION=1.1
+VERSION=1.2
 
 
 def get_args():
@@ -269,6 +269,19 @@ def prepare_tui_terminal_input(rtcm_stream):
     return terminal, original_stdin, original_dunder_stdin
 
 
+def configure_stdout_buffering() -> None:
+    """
+    Stream decoded output line-by-line when stdout is a pipe (e.g. CGI).
+    """
+
+    if not hasattr(sys.stdout, "reconfigure"):
+        return
+    try:
+        sys.stdout.reconfigure(line_buffering=True, write_through=True)
+    except (AttributeError, OSError, ValueError):
+        pass
+
+
 def main():
 
     """
@@ -301,6 +314,7 @@ def main():
                 sys.__stdin__ = original_dunder_stdin
                 terminal.close()
     else:
+        configure_stdout_buffering()
         print("\nProcessing file {}...\n".format(args["RTCMFile"].name),file=sys.stderr)
         read(args["RTCMFile"],
             errhandler,\
