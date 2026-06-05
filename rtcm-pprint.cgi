@@ -30,6 +30,7 @@ Environment variables (optional):
     RTCM_CGI_LOG    Log file path; setting this enables file logging
     RTCM_CGI_DEBUG  Set to 1 to enable file logging and stderr debug output
     MAX_UPLOAD_BYTES  Maximum uploaded file size (default: 52428800 = 50 MiB)
+    DECODER_TIMEOUT_SECONDS  Maximum decode runtime in seconds (default: 300)
 
 Optional CGI form field:
 
@@ -65,12 +66,14 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import zipfile
 from pathlib import Path
 
 DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+DEFAULT_DECODER_TIMEOUT_SECONDS = 300
 MAX_LOG_RESPONSE_BODY = 16384
 TRUTHY = {"1", "on", "yes", "true"}
 FormData = dict[str, str | tuple[bytes, str]]
@@ -91,6 +94,7 @@ CGI_ENV_KEYS = (
     "RTCM_CGI_LOG",
     "RTCM_CGI_DEBUG",
     "MAX_UPLOAD_BYTES",
+    "DECODER_TIMEOUT_SECONDS",
 )
 
 
@@ -235,6 +239,17 @@ def max_upload_bytes() -> int:
         return DEFAULT_MAX_UPLOAD_BYTES
 
 
+def decoder_timeout_seconds() -> int:
+    raw = os.environ.get(
+        "DECODER_TIMEOUT_SECONDS",
+        str(DEFAULT_DECODER_TIMEOUT_SECONDS),
+    )
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_DECODER_TIMEOUT_SECONDS
+
+
 def is_cgi() -> bool:
     return os.environ.get("GATEWAY_INTERFACE", "").startswith("CGI/")
 
@@ -284,11 +299,11 @@ def summarize_form(form: FormData) -> None:
 
 def format_error_message(message: str, *, include_traceback: bool = False) -> str:
     parts = [message.rstrip()]
-    if DEBUG.lines:
+    if DEBUG.enabled and DEBUG.lines:
         parts.extend(["", "--- CGI debug ---", DEBUG.dump()])
-    if LOG_FILE_USED is not None:
+    if DEBUG.enabled and LOG_FILE_USED is not None:
         parts.extend(["", f"Log file: {LOG_FILE_USED}"])
-    elif DEBUG.cgi_mode and CGI_FILE_LOGGING:
+    elif DEBUG.enabled and DEBUG.cgi_mode and CGI_FILE_LOGGING:
         parts.extend(
             [
                 "",
@@ -296,7 +311,7 @@ def format_error_message(message: str, *, include_traceback: bool = False) -> st
                 *[f"  {path}" for path in log_file_candidates()],
             ]
         )
-    if include_traceback:
+    if DEBUG.enabled and include_traceback:
         parts.extend(["", "--- traceback ---", traceback.format_exc()])
     return "\n".join(parts) + "\n"
 
@@ -503,6 +518,10 @@ def read_request_body() -> bytes:
     if content_length <= 0:
         raise ValueError("Missing request body")
 
+    limit = max_upload_bytes()
+    if content_length > limit:
+        raise ValueError(f"Request body exceeds MAX_UPLOAD_BYTES ({limit} bytes)")
+
     body = sys.stdin.buffer.read(content_length)
     DEBUG.log(f"read {len(body)} bytes from stdin")
     if len(body) != content_length:
@@ -660,7 +679,8 @@ def stream_decoder(command: list[str], decoder: Path) -> tuple[int, int, bytes]:
     DEBUG.section("stream decoder")
     DEBUG.log(f"command={' '.join(command)!r}")
     workdir = decoder_workdir(decoder)
-    DEBUG.log(f"subprocess cwd={workdir!r}")
+    timeout = decoder_timeout_seconds()
+    DEBUG.log(f"subprocess cwd={workdir!r} timeout={timeout}s")
 
     proc = subprocess.Popen(
         command,
@@ -673,17 +693,40 @@ def stream_decoder(command: list[str], decoder: Path) -> tuple[int, int, bytes]:
     assert proc.stderr is not None
 
     streamed = 0
+    reader_error: list[BaseException] = []
+
+    def relay_stdout() -> None:
+        nonlocal streamed
+        try:
+            while True:
+                chunk = proc.stdout.read(8192)
+                if not chunk:
+                    break
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                streamed += len(chunk)
+        except BaseException as err:  # pylint: disable=broad-exception-caught
+            reader_error.append(err)
+
+    reader = threading.Thread(target=relay_stdout, daemon=True)
+    reader.start()
+    timed_out = False
     try:
-        while True:
-            chunk = proc.stdout.read(8192)
-            if not chunk:
-                break
-            sys.stdout.buffer.write(chunk)
-            sys.stdout.buffer.flush()
-            streamed += len(chunk)
-    finally:
-        stderr = proc.stderr.read()
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        proc.kill()
         proc.wait()
+    reader.join(timeout=2)
+    stderr = proc.stderr.read()
+
+    if timed_out:
+        message = f"Decode timed out after {timeout} seconds"
+        DEBUG.log(message)
+        return -1, streamed, message.encode("utf-8")
+
+    if reader_error:
+        raise reader_error[0]
 
     DEBUG.log(
         f"returncode={proc.returncode} streamed bytes={streamed} "
@@ -782,13 +825,18 @@ def run_decoder(command: list[str], decoder: Path) -> tuple[int, bytes, bytes]:
     DEBUG.section("run decoder")
     DEBUG.log(f"command={' '.join(command)!r}")
     workdir = decoder_workdir(decoder)
-    DEBUG.log(f"subprocess cwd={workdir!r}")
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        check=False,
-        cwd=workdir,
-    )
+    timeout = decoder_timeout_seconds()
+    DEBUG.log(f"subprocess cwd={workdir!r} timeout={timeout}s")
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            cwd=workdir,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as err:
+        raise RuntimeError(f"Decode timed out after {timeout} seconds") from err
     DEBUG.log(f"returncode={completed.returncode}")
     DEBUG.log(f"stdout bytes={len(completed.stdout)} stderr bytes={len(completed.stderr)}")
     if completed.stderr:
@@ -1142,9 +1190,10 @@ if __name__ == "__main__":
         bootstrap_cgi_log(f"uncaught {type(err).__name__}: {err}")
         if is_cgi():
             try:
-                send_fatal_cgi(
-                    f"Fatal CGI error: {err}\n\n{traceback.format_exc()}\n"
-                )
+                message = f"Fatal CGI error: {err}\n"
+                if DEBUG.enabled:
+                    message += f"\n{traceback.format_exc()}\n"
+                send_fatal_cgi(message)
             except Exception:
                 pass
         raise
