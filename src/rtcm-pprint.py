@@ -183,7 +183,7 @@ def read(stream, errorhandler, quitonerror, validate,
                     msg_id, message_counts[msg_id]))
     print(f"\n{msg_count} messages read. {print_msg_count} printed\n")
 
-VERSION=1.2.1
+VERSION = "1.2.1"
 
 
 def get_args():
