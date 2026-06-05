@@ -14,7 +14,8 @@ Optional form fields (checkboxes, any truthy value enables the flag):
     metadataOnly, obsSummary, summaryOnly, singleRecord, debug
 
 Full decode output (none of metadataOnly, summaryOnly, or singleRecord) is
-returned as a ZIP download automatically. Compact modes return plain text.
+returned as a ZIP download automatically. Compact modes stream plain text
+to the browser as decoding progresses.
 
 Local testing (no Apache required):
 
@@ -632,6 +633,96 @@ def send_text(message: str, *, status: int = 200) -> None:
     send_response(message.encode("utf-8"), content_type="text/plain; charset=utf-8", status=status)
 
 
+def subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
+def begin_streaming_text_response() -> None:
+    """
+    Send CGI headers without Content-Length so output can stream to the browser.
+    """
+
+    if CGI_FILE_LOGGING:
+        write_log_file("rtcm-pprint.cgi: --- cgi streaming response ---")
+        write_log_file("rtcm-pprint.cgi: header: Content-Type: text/plain; charset=utf-8")
+    headers = "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+    sys.stdout.buffer.write(headers.encode("ascii"))
+    sys.stdout.buffer.flush()
+
+
+def stream_decoder(command: list[str], decoder: Path) -> tuple[int, int, bytes]:
+    """
+    Run the decoder and relay stdout to the CGI response as it is produced.
+    """
+
+    DEBUG.section("stream decoder")
+    DEBUG.log(f"command={' '.join(command)!r}")
+    workdir = decoder_workdir(decoder)
+    DEBUG.log(f"subprocess cwd={workdir!r}")
+
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=workdir,
+        env=subprocess_env(),
+    )
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+
+    streamed = 0
+    try:
+        while True:
+            chunk = proc.stdout.read(8192)
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            streamed += len(chunk)
+    finally:
+        stderr = proc.stderr.read()
+        proc.wait()
+
+    DEBUG.log(
+        f"returncode={proc.returncode} streamed bytes={streamed} "
+        f"stderr bytes={len(stderr)}"
+    )
+    return proc.returncode, streamed, stderr
+
+
+def stream_plain_decode(
+    upload_data: bytes,
+    upload_name: str,
+    form: FormData,
+) -> None:
+    pprint_executable = resolve_decoder(allow_python_fallback=False)
+
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=True) as handle:
+        handle.write(upload_data)
+        handle.flush()
+        DEBUG.log(f"temp input file={handle.name} size={len(upload_data)}")
+
+        command = build_command(pprint_executable, Path(handle.name), form)
+        begin_streaming_text_response()
+        returncode, streamed, stderr = stream_decoder(command, pprint_executable)
+
+    if returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip()
+        if not detail:
+            detail = f"rtcm-pprint exited with status {returncode}"
+        sys.stdout.buffer.write(f"\n\nDecode failed:\n{detail}\n".encode("utf-8"))
+        sys.stdout.buffer.flush()
+        return
+
+    if streamed == 0 and not form_flag(form, "summaryOnly"):
+        sys.stdout.buffer.write(b"Decode completed but produced no output.\n")
+        sys.stdout.buffer.flush()
+
+    DEBUG.log("stream decode complete")
+
+
 def parse_upload(form: FormData) -> tuple[bytes, str]:
     if "file" not in form:
         raise ValueError("Missing required form field: file")
@@ -962,15 +1053,15 @@ def run_cgi() -> None:
         upload_data, upload_name = parse_upload(form)
         DEBUG.log(f"upload name={upload_name!r} size={len(upload_data)}")
 
-        decode_text, zip_body, archive_name = decode_upload(
-            upload_data,
-            upload_name,
-            form,
-            allow_python_fallback=False,
-        )
+        if should_auto_zip(form):
+            decode_text, zip_body, archive_name = decode_upload(
+                upload_data,
+                upload_name,
+                form,
+                allow_python_fallback=False,
+            )
 
-        DEBUG.log("decode complete")
-        if zip_body is not None and archive_name is not None:
+            DEBUG.log("decode complete")
             DEBUG.log(f"returning zip={archive_name!r} size={len(zip_body)}")
             send_response(
                 zip_body,
@@ -979,16 +1070,8 @@ def run_cgi() -> None:
             )
             return
 
-        DEBUG.log(f"returning plain text size={len(decode_text)}")
-        if not decode_text and not form_flag(form, "summaryOnly"):
-            send_text(
-                format_error_message(
-                    "Decode completed but produced no output.\n"
-                ),
-                status=500,
-            )
-            return
-        send_response(decode_text, content_type="text/plain; charset=utf-8")
+        DEBUG.log("streaming plain text (compact decode options)")
+        stream_plain_decode(upload_data, upload_name, form)
 
     except ValueError as err:
         DEBUG.log(f"value error={err}")
