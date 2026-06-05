@@ -15,7 +15,7 @@
 <div id="content-area">
 <div id="content">
 <div id="main-content" class="clearfix">
-<form target="_blank" action="/cgi-bin/rtcm-pprint.cgi" method="post" enctype="multipart/form-data">
+<form id="rtcmForm" target="_blank" action="/cgi-bin/rtcm-pprint.cgi" method="post" enctype="multipart/form-data">
 <table border="1" width="100%">
 <caption>RTCM V3 File</caption>
 <col width="25%">
@@ -25,11 +25,12 @@
 RTCM3 File:
 </td>
 <td>
-<input type="file" name="file" size="80" />
+<input type="file" name="file" id="rtcmFile" size="80" />
 </td>
 </tr>
 
 </table>
+<p id="fileError" style="color: #c00; display: none;"></p>
 
 <br/>
 
@@ -79,6 +80,37 @@ RTCM3 File:
 </div>
 </div>
 </div>
+
+<script type="text/javascript">
+(function () {
+  var form = document.getElementById("rtcmForm");
+  var fileInput = document.getElementById("rtcmFile");
+  var fileError = document.getElementById("fileError");
+
+  function clearFileError() {
+    fileError.style.display = "none";
+    fileError.textContent = "";
+  }
+
+  fileInput.onchange = function () {
+    if (fileInput.files && fileInput.files.length > 0) {
+      clearFileError();
+    }
+  };
+
+  form.onsubmit = function (event) {
+    if (!fileInput.files || fileInput.files.length === 0) {
+      event.preventDefault();
+      fileError.textContent = "Please select an RTCM file before submitting.";
+      fileError.style.display = "block";
+      fileInput.focus();
+      return false;
+    }
+    clearFileError();
+    return true;
+  };
+})();
+</script>
 
 </body>
 </html>
